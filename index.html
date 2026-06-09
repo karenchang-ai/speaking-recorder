@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Feature-Policy" content="microphone 'self' *">
+<title>Speaking Recorder</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: Arial, sans-serif;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 20px;
+  }
+
+  #status {
+    font-size: 16px;
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+    min-height: 24px;
+  }
+
+  #timer {
+    font-size: 48px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 30px;
+    min-height: 60px;
+  }
+
+  #recordBtn {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: none;
+    background: #e74c3c;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+    transition: all 0.3s ease;
+  }
+
+  #recordBtn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.5);
+  }
+
+  #recordBtn.recording {
+    background: #c0392b;
+    animation: pulse 1.5s infinite;
+  }
+
+  #recordBtn.done {
+    background: #27ae60;
+    animation: none;
+  }
+
+  #recordBtn.submitting {
+    background: #95a5a6;
+    cursor: not-allowed;
+    animation: none;
+  }
+
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+    70% { box-shadow: 0 0 0 20px rgba(231, 76, 60, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+  }
+
+  #micIcon {
+    width: 40px;
+    height: 40px;
+    fill: white;
+  }
+
+  #submitBtn {
+    margin-top: 20px;
+    padding: 12px 40px;
+    font-size: 16px;
+    background: #2980b9;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: none;
+    transition: background 0.3s;
+  }
+
+  #submitBtn:hover {
+    background: #2471a3;
+  }
+
+  #message {
+    margin-top: 20px;
+    font-size: 14px;
+    color: #666;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="status">Press the button to start recording</div>
+<div id="timer"></div>
+
+<button id="recordBtn" onclick="toggleRecording()">
+  <svg id="micIcon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+  </svg>
+</button>
+
+<button id="submitBtn" onclick="submitRecording()">Submit Answer</button>
+<div id="message"></div>
+
+<script>
+  // ---- CONFIGURATION ----
+  var LAMBDA_URL = "https://t3fzadwtyz22s6u2w6dgtiz24y0gghmm.lambda-url.us-east-2.on.aws/";
+  var QUESTION = "Some companies require employees to be available outside working hours. Do you think this is a good policy?";
+  var MAX_SECONDS = 60;
+  // -----------------------
+
+  var mediaRecorder;
+  var audioChunks = [];
+  var isRecording = false;
+  var timerInterval;
+  var secondsLeft = MAX_SECONDS;
+  var audioBlob;
+
+  function toggleRecording() {
+    if (!isRecording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
+  }
+
+  function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(function(stream) {
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        
+        mediaRecorder.ondataavailable = function(e) {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = function() {
+          audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+          document.getElementById("submitBtn").style.display = "block";
+          document.getElementById("status").textContent = "Recording complete. Press Submit when ready.";
+          document.getElementById("recordBtn").className = "done";
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        document.getElementById("recordBtn").className = "recording";
+        document.getElementById("status").textContent = "Recording... speak now";
+        document.getElementById("submitBtn").style.display = "none";
+
+        secondsLeft = MAX_SECONDS;
+        updateTimer();
+        timerInterval = setInterval(function() {
+          secondsLeft--;
+          updateTimer();
+          if (secondsLeft <= 0) {
+            stopRecording();
+          }
+        }, 1000);
+      })
+      .catch(function(err) {
+        document.getElementById("status").textContent = "Microphone access denied. Please allow microphone access.";
+      });
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(function(t) { t.stop(); });
+      isRecording = false;
+      clearInterval(timerInterval);
+      document.getElementById("timer").textContent = "";
+    }
+  }
+
+  function updateTimer() {
+    var mins = Math.floor(secondsLeft / 60);
+    var secs = secondsLeft % 60;
+    document.getElementById("timer").textContent = 
+      (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
+  }
+
+  function submitRecording() {
+    if (!audioBlob) return;
+
+    document.getElementById("submitBtn").style.display = "none";
+    document.getElementById("recordBtn").className = "submitting";
+    document.getElementById("status").textContent = "Grading your response...";
+    document.getElementById("message").textContent = "This may take up to 30 seconds.";
+
+    var reader = new FileReader();
+    reader.onloadend = function() {
+      var base64 = reader.result.split(",")[1];
+
+      fetch(LAMBDA_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: QUESTION,
+          audio: base64,
+          audioFormat: "webm"
+        })
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.error) {
+          document.getElementById("status").textContent = "Error: " + data.error;
+          document.getElementById("message").textContent = data.details || "";
+          return;
+        }
+
+        // Send scores to Storyline
+        var player = window.parent.GetPlayer();
+        if (player) {
+          player.SetVar("score_grammar", data.scores.grammar || 0);
+          player.SetVar("score_vocabulary", data.scores.vocabulary || 0);
+          player.SetVar("score_cohesion", data.scores.cohesion || 0);
+          player.SetVar("score_relevance", data.scores.relevance || 0);
+          player.SetVar("score_completeness", data.scores.completeness || 0);
+          player.SetVar("score_total", data.total || 0);
+          player.SetVar("score_band", data.band || "");
+          player.SetVar("feedback_strength", data.feedback.strength || "");
+          player.SetVar("feedback_improvement", data.feedback.improvement || "");
+          player.SetVar("transcript", data.transcript || "");
+          player.SetVar("grading_complete", "yes");
+        }
+
+        document.getElementById("status").textContent = "Grading complete!";
+        document.getElementById("message").textContent = "Your results are ready.";
+      })
+      .catch(function(err) {
+        document.getElementById("status").textContent = "Connection error. Please try again.";
+        document.getElementById("message").textContent = err.message;
+      });
+    };
+
+    reader.readAsDataURL(audioBlob);
+  }
+</script>
+</body>
+</html>

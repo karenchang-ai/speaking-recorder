@@ -228,9 +228,10 @@
           return;
         }
 
-        // Send scores to Storyline
-        var player = window.parent.GetPlayer();
-        if (player) {
+        // Send scores to Storyline if running inside Storyline
+var player = null;
+try { player = window.parent.GetPlayer(); } catch(e) {}
+if (player) {
           player.SetVar("score_grammar", data.scores.grammar || 0);
           player.SetVar("score_vocabulary", data.scores.vocabulary || 0);
           player.SetVar("score_cohesion", data.scores.cohesion || 0);
